@@ -1,0 +1,838 @@
+--[[
+Segmented Gauge Control
+Copyright (C) 2024 Jonathan Dean (ke4ukz@gmx.com)
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Lesser General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU Lesser General Public License for more details.
+
+You should have received a copy of the GNU Lesser General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+]]--
+
+-- Information block for the plugin
+PluginInfo = {
+	Name = "Segmented Gauge",
+	Version = "1.0",
+	BuildVersion = "1.0.0.0",
+	Id = "4d2a4b39-17e0-41ee-a606-e0917c8b612f",
+	Author = "Jonathan Dean (ke4ukz@gmx.com)",
+	Description = "Segmented gauge control with customizable range and colors",
+	Manufacturer = "None",
+	Model = "Various"
+}
+
+-- Verbosity levels for debugging
+DebugLevels =  {
+	"None",
+	"Function Calls",
+	"All"
+}
+
+DebugLevelNone = DebugLevels[1]				-- Does not print any debug data
+DebugLevelFunctionCalls = DebugLevels[2]	-- Prints function call notifications
+DebugLevelAll = DebugLevels[3]				-- Prints both function call notifications and TX/RX data
+
+PageNames = { "Gauge" }		-- List the pages within the plugin
+
+-- Conditionally print to debug output depending on debug verbosity
+function DBG(str, lvl)
+	if Properties["Debug Print"].Value == DebugLevelAll or Properties["Debug Print"].Value == lvl then
+		print(str)
+	end
+end
+
+function FUNCCALL(fname)
+	DBG("Function called: " .. fname, DebugLevelFunctionCalls)
+end
+
+-- Define the color of the plugin object in the design
+function GetColor(props)
+	return { 0, 139, 139 }
+end
+
+-- The name that will initially display when dragged into a design
+function GetPrettyName(props)
+	return PluginInfo.Name
+end
+
+-- Returns an ordered table of the page names
+function GetPages(props)
+	local pages = {}
+	for ix,name in ipairs(PageNames) do
+		table.insert(pages, {name = PageNames[ix]})
+	end
+	return pages
+end
+
+-- Define User configurable Properties of the plugin
+function GetProperties()
+	local props = {}
+	-- Add debug verbosity property
+	table.insert(props, {
+		Name = "Debug Print",
+		Type = "enum",
+		Choices = DebugLevels,
+		Value = DebugLevelNone
+	})
+	table.insert(props, {
+		Name = "Threshold Logic",
+		Type = "enum",
+		Choices = {"Minimum", "Midpoint", "Maximum"},
+		Value = "Maximum" -- using the max value for the segments seems to feel the most natural
+	})
+	table.insert(props, {
+		Name = "Invert Fill",
+		Type = "boolean",
+		Value = false
+	})
+	return props
+end
+
+-- Optional function to define pins on the plugin that are not connected to a Control
+function GetPins(props)
+	local pins = {}
+	return pins
+end
+
+-- Optional function to update available properties when properties are altered by the user
+function RectifyProperties(props)
+	if props.plugin_show_debug.Value == false then
+		-- Don't show debug verbosity if debugging is disabled
+		props["Debug Print"].IsHidden = true
+		props["Debug Print"].Value = DebugLevelNone
+	else
+		-- Show debug verbosity when debugging is enabled
+		props["Debug Print"].IsHidden = false
+	end
+	return props
+end
+
+-- Optional function to define components used within the plugin
+function GetComponents(props)
+	-- No components used here
+	local components = {}
+	return components
+end
+
+-- Optional function to define wiring of components used within the plugin
+function GetWiring(props)
+	-- No wiring used here
+	local wiring = {}
+	return wiring
+end
+
+-- Defines the Controls used within the plugin
+function GetControls(props)
+	local ctrls = {
+		{
+			Name = "Max",
+			ControlType = "Text",
+			DefaultValue = "100",
+			PinStyle = "Input",
+			UserPin = true,
+			Count = 1
+		},
+		{
+			Name = "Min",
+			ControlType = "Text",
+			DefaultValue = "0",
+			PinStyle = "Input",
+			UserPin = true,
+			Count = 1
+		},
+		{
+			Name = "SegmentCount",
+			ControlType = "Knob",
+			ControlUnit = "Integer",
+			DefaultValue = 15,
+			Min = 3,
+			Max = 200,
+			PinStyle = "Input",
+			UserPin = true,
+			Count = 1
+		},
+		{
+			Name = "SegmentSpacing",
+			ControlType = "Knob",
+			ControlUnit = "Integer",
+			DefaultValue = 4,
+			Min = 0,
+			Max = 100,
+			PinStyle = "Input",
+			UserPin = true,
+			Count = 1
+		},
+		{
+			Name = "ThresholdLow",
+			ControlType = "Text",
+			DefaultValue = "33",
+			PinStyle = "Input",
+			UserPin = true,
+			Count = 1
+		},
+		{
+			Name = "ThresholdHigh",
+			ControlType = "Text",
+			DefaultValue = "66",
+			PinStyle = "Input",
+			UserPin = true,
+			Count = 1
+		},
+		{
+			Name = "ColorLow",
+			ControlType = "Text",
+			DefaultValue = "MEDIUMSEAGREEN",
+			PinStyle = "Input",
+			UserPin = true,
+			Count = 1
+		},
+		{
+			Name = "ColorMedium",
+			ControlType = "Text",
+			DefaultValue = "WHEAT",
+			PinStyle = "Input",
+			UserPin = true,
+			Count = 1
+		},
+		{
+			Name = "ColorHigh",
+			ControlType = "Text",
+			DefaultValue = "LIGHTCORAL",
+			PinStyle = "Input",
+			UserPin = true,
+			Count = 1
+		},
+		{
+			Name = "ColorOff",
+			ControlType = "Text",
+			DefaultValue = "DIMGRAY",
+			PinStyle = "Input",
+			UserPin = true,
+			Count = 1
+		},
+		{
+			Name = "ColorStroke",
+			ControlType = "Text",
+			DefaultValue = "GAINSBORO",
+			PinStyle = "Input",
+			UserPin = true,
+			Count = 1
+		},
+		{
+			Name = "ColorBackground",
+			ControlType = "Text",
+			DefaultValue = "DIMGRAY",
+			PinStyle = "Input",
+			UserPin = true,
+			Count = 1
+		},
+		{
+			Name = "CornerRadius",
+			ControlType = "Knob",
+			ControlUnit = "Integer",
+			DefaultValue = 4,
+			Min = 0,
+			Max = 100,
+			PinStyle = "Input",
+			UserPin = true,
+			Count = 1
+		},
+		{
+			Name = "StrokeWidth",
+			ControlType = "Knob",
+			ControlUnit = "Integer",
+			DefaultValue = 2,
+			Min = 0,
+			Max = 20,
+			PinStyle = "Input",
+			UserPin = true,
+			Count = 1
+		},
+		{
+			Name = "BackgroundOpacity",
+			ControlType = "Knob",
+			ControlUnit = "Integer",
+			DefaultValue = 75,
+			Min = 0,
+			Max = 100,
+			PinStyle = "Input",
+			UserPin = true,
+			Count = 1
+		},
+		{
+			Name = "OffOpacity",
+			ControlType = "Knob",
+			ControlUnit = "Integer",
+			DefaultValue = 75,
+			Min = 0,
+			Max = 100,
+			PinStyle = "Input",
+			UserPin = true,
+			Count = 1
+		},
+		{
+			Name = "GaugeWidth",
+			ControlType = "Knob",
+			ControlUnit = "Integer",
+			DefaultValue = 90,
+			Min = 1,
+			Max = 1000,
+			PinStyle = "Input",
+			UserPin = true,
+			Count = 1
+		},
+		{
+			Name = "GaugeHeight",
+			ControlType = "Knob",
+			ControlUnit = "Integer",
+			DefaultValue = 378,
+			Min = 1,
+			Max = 1000,
+			PinStyle = "Input",
+			UserPin = true,
+			Count = 1
+		},
+		{
+			Name = "Value",
+			ControlType = "Text",
+			DefaultValue = "75",
+			PinStyle = "Input",
+			UserPin = false,
+			Count = 1
+		},
+		{
+			Name = "Gauge",
+			ControlType = "Button",
+			ButtonType = "Toggle",
+			PinStyle = "Both",
+			UserPin = true,
+			Count = 1
+		}
+	}
+
+
+	return ctrls
+end
+
+function GetControlLayout(props)
+	local layout = {}
+	local graphics = {}
+	local CurrentPage = PageNames[props["page_index"].Value]
+
+	local fieldHeight = 16
+	local xOffset = 4
+	local gapSize = 4
+	local fieldWidth = 140
+
+	if CurrentPage == "Gauge" then
+		local curRow = 1
+
+		-- Max
+		table.insert(graphics, {
+			Type = "Text",
+			Text = "Max",
+			Position = { xOffset, (fieldHeight + gapSize) * curRow},
+			Size = { fieldWidth, fieldHeight },
+			FontSize = 14,
+			HTextAlign = "Right"
+		})
+		layout["Max"] = {
+			PrettyName = "Range~Max",
+			Style="TextBox",
+			Position = {xOffset + gapSize + fieldWidth, (fieldHeight + gapSize) * curRow},
+			Size = {fieldWidth, fieldHeight}
+		}
+		curRow = curRow + 1
+
+		-- Min
+		table.insert(graphics, {
+			Type = "Text",
+			Text = "Min",
+			Position = { xOffset, (fieldHeight + gapSize) * curRow},
+			Size = { fieldWidth, fieldHeight },
+			FontSize = 14,
+			HTextAlign = "Right"
+		})
+		layout["Min"] = {
+			PrettyName = "Range~Min",
+			Style="TextBox",
+			Position = {xOffset + gapSize + fieldWidth, (fieldHeight + gapSize) * curRow},
+			Size = {fieldWidth, fieldHeight}
+		}
+		curRow = curRow + 1
+
+		-- SegmentCount
+		table.insert(graphics, {
+			Type = "Text",
+			Text = "Segments Count",
+			Position = { xOffset, (fieldHeight + gapSize) * curRow},
+			Size = { fieldWidth, fieldHeight },
+			FontSize = 14,
+			HTextAlign = "Right"
+		})
+		layout["SegmentCount"] = {
+			PrettyName = "Segments~Count",
+			Style="TextBox",
+			Position = {xOffset + gapSize + fieldWidth, (fieldHeight + gapSize) * curRow},
+			Size = {fieldWidth, fieldHeight}
+		}
+		curRow = curRow + 1
+
+		-- SegmentSpacing
+		table.insert(graphics, {
+			Type = "Text",
+			Text = "Segments Spacing",
+			Position = { xOffset, (fieldHeight + gapSize) * curRow},
+			Size = { fieldWidth, fieldHeight },
+			FontSize = 14,
+			HTextAlign = "Right"
+		})
+		layout["SegmentSpacing"] = {
+			PrettyName = "Segments~Spacing",
+			Style="TextBox",
+			Position = {xOffset + gapSize + fieldWidth, (fieldHeight + gapSize) * curRow},
+			Size = {fieldWidth, fieldHeight}
+		}
+		curRow = curRow + 1
+
+		-- ThresholdLow
+		table.insert(graphics, {
+			Type = "Text",
+			Text = "Low Threshold",
+			Position = { xOffset, (fieldHeight + gapSize) * curRow},
+			Size = { fieldWidth, fieldHeight },
+			FontSize = 14,
+			HTextAlign = "Right"
+		})
+		layout["ThresholdLow"] = {
+			PrettyName = "Thresholds~Low",
+			Style="TextBox",
+			Position = {xOffset + gapSize + fieldWidth, (fieldHeight + gapSize) * curRow},
+			Size = {fieldWidth, fieldHeight}
+		}
+		curRow = curRow + 1
+
+		-- ThresholdHigh
+		table.insert(graphics, {
+			Type = "Text",
+			Text = "High Threshold",
+			Position = { xOffset, (fieldHeight + gapSize) * curRow},
+			Size = { fieldWidth, fieldHeight },
+			FontSize = 14,
+			HTextAlign = "Right"
+		})
+		layout["ThresholdHigh"] = {
+			PrettyName = "Thresholds~High",
+			Style="TextBox",
+			Position = {xOffset + gapSize + fieldWidth, (fieldHeight + gapSize) * curRow},
+			Size = {fieldWidth, fieldHeight}
+		}
+		curRow = curRow + 1
+
+		-- ColorLow
+		table.insert(graphics, {
+			Type = "Text",
+			Text = "Low Color",
+			Position = { xOffset, (fieldHeight + gapSize) * curRow},
+			Size = { fieldWidth, fieldHeight },
+			FontSize = 14,
+			HTextAlign = "Right"
+		})
+		layout["ColorLow"] = {
+			PrettyName = "Colors~Low",
+			Style="TextBox",
+			Position = {xOffset + gapSize + fieldWidth, (fieldHeight + gapSize) * curRow},
+			Size = {fieldWidth, fieldHeight}
+		}
+		curRow = curRow + 1
+
+		-- ColorMedium
+		table.insert(graphics, {
+			Type = "Text",
+			Text = "Medium Color",
+			Position = { xOffset, (fieldHeight + gapSize) * curRow},
+			Size = { fieldWidth, fieldHeight },
+			FontSize = 14,
+			HTextAlign = "Right"
+		})
+		layout["ColorMedium"] = {
+			PrettyName = "Colors~Medium",
+			Style="TextBox",
+			Position = {xOffset + gapSize + fieldWidth, (fieldHeight + gapSize) * curRow},
+			Size = {fieldWidth, fieldHeight}
+		}
+		curRow = curRow + 1
+
+		-- ColorHigh
+		table.insert(graphics, {
+			Type = "Text",
+			Text = "High Color",
+			Position = { xOffset, (fieldHeight + gapSize) * curRow},
+			Size = { fieldWidth, fieldHeight },
+			FontSize = 14,
+			HTextAlign = "Right"
+		})
+		layout["ColorHigh"] = {
+			PrettyName = "Colors~High",
+			Style="TextBox",
+			Position = {xOffset + gapSize + fieldWidth, (fieldHeight + gapSize) * curRow},
+			Size = {fieldWidth, fieldHeight}
+		}
+		curRow = curRow + 1
+
+		-- ColorOff
+		table.insert(graphics, {
+			Type = "Text",
+			Text = "Off Color",
+			Position = { xOffset, (fieldHeight + gapSize) * curRow},
+			Size = { fieldWidth, fieldHeight },
+			FontSize = 14,
+			HTextAlign = "Right"
+		})
+		layout["ColorOff"] = {
+			PrettyName = "Colors~Off",
+			Style="TextBox",
+			Position = {xOffset + gapSize + fieldWidth, (fieldHeight + gapSize) * curRow},
+			Size = {fieldWidth, fieldHeight}
+		}
+		curRow = curRow + 1
+
+		-- ColorStroke
+		table.insert(graphics, {
+			Type = "Text",
+			Text = "Stroke Color",
+			Position = { xOffset, (fieldHeight + gapSize) * curRow},
+			Size = { fieldWidth, fieldHeight },
+			FontSize = 14,
+			HTextAlign = "Right"
+		})
+		layout["ColorStroke"] = {
+			PrettyName = "Colors~Stroke",
+			Style="TextBox",
+			Position = {xOffset + gapSize + fieldWidth, (fieldHeight + gapSize) * curRow},
+			Size = {fieldWidth, fieldHeight}
+		}
+		curRow = curRow + 1
+
+		-- ColorBackground
+		table.insert(graphics, {
+			Type = "Text",
+			Text = "Background Color",
+			Position = { xOffset, (fieldHeight + gapSize) * curRow},
+			Size = { fieldWidth, fieldHeight },
+			FontSize = 14,
+			HTextAlign = "Right"
+		})
+		layout["ColorBackground"] = {
+			PrettyName = "Colors~Background",
+			Style="TextBox",
+			Position = {xOffset + gapSize + fieldWidth, (fieldHeight + gapSize) * curRow},
+			Size = {fieldWidth, fieldHeight}
+		}
+		curRow = curRow + 1
+
+		-- StrokeWidth
+		table.insert(graphics, {
+			Type = "Text",
+			Text = "Stroke Width",
+			Position = { xOffset, (fieldHeight + gapSize) * curRow},
+			Size = { fieldWidth, fieldHeight },
+			FontSize = 14,
+			HTextAlign = "Right"
+		})
+		layout["StrokeWidth"] = {
+			PrettyName = "Stroke Width",
+			Style="TextBox",
+			Position = {xOffset + gapSize + fieldWidth, (fieldHeight + gapSize) * curRow},
+			Size = {fieldWidth, fieldHeight}
+		}
+		curRow = curRow + 1
+
+		-- CornerRadius
+		table.insert(graphics, {
+			Type = "Text",
+			Text = "Corner Radius",
+			Position = { xOffset, (fieldHeight + gapSize) * curRow},
+			Size = { fieldWidth, fieldHeight },
+			FontSize = 14,
+			HTextAlign = "Right"
+		})
+		layout["CornerRadius"] = {
+			PrettyName = "Corner Radius",
+			Style="TextBox",
+			Position = {xOffset + gapSize + fieldWidth, (fieldHeight + gapSize) * curRow},
+			Size = {fieldWidth, fieldHeight}
+		}
+		curRow = curRow + 1
+
+		-- BackgroundOpacity
+		table.insert(graphics, {
+			Type = "Text",
+			Text = "Background Opacity",
+			Position = { xOffset, (fieldHeight + gapSize) * curRow},
+			Size = { fieldWidth, fieldHeight },
+			FontSize = 14,
+			HTextAlign = "Right"
+		})
+		layout["BackgroundOpacity"] = {
+			PrettyName = "Background Opacity",
+			Style="TextBox",
+			Position = {xOffset + gapSize + fieldWidth, (fieldHeight + gapSize) * curRow},
+			Size = {fieldWidth, fieldHeight}
+		}
+		curRow = curRow + 1
+
+		-- OffOpacity
+		table.insert(graphics, {
+			Type = "Text",
+			Text = "Off Segment Opacity",
+			Position = { xOffset, (fieldHeight + gapSize) * curRow},
+			Size = { fieldWidth, fieldHeight },
+			FontSize = 14,
+			HTextAlign = "Right"
+		})
+		layout["OffOpacity"] = {
+			PrettyName = "Off Segment Opacity",
+			Style="TextBox",
+			Position = {xOffset + gapSize + fieldWidth, (fieldHeight + gapSize) * curRow},
+			Size = {fieldWidth, fieldHeight}
+		}
+		curRow = curRow + 1
+
+		-- GaugeWidth
+		table.insert(graphics, {
+			Type = "Text",
+			Text = "Gauge Width",
+			Position = { xOffset, (fieldHeight + gapSize) * curRow},
+			Size = { fieldWidth, fieldHeight },
+			FontSize = 14,
+			HTextAlign = "Right"
+		})
+		layout["GaugeWidth"] = {
+			PrettyName = "Gauge Width",
+			Style="TextBox",
+			Position = {xOffset + gapSize + fieldWidth, (fieldHeight + gapSize) * curRow},
+			Size = {fieldWidth, fieldHeight}
+		}
+		curRow = curRow + 1
+
+		-- GaugeHeight
+		table.insert(graphics, {
+			Type = "Text",
+			Text = "Gauge Height",
+			Position = { xOffset, (fieldHeight + gapSize) * curRow},
+			Size = { fieldWidth, fieldHeight },
+			FontSize = 14,
+			HTextAlign = "Right"
+		})
+		layout["GaugeHeight"] = {
+			PrettyName = "Gauge Height",
+			Style="TextBox",
+			Position = {xOffset + gapSize + fieldWidth, (fieldHeight + gapSize) * curRow},
+			Size = {fieldWidth, fieldHeight}
+		}
+		curRow = curRow + 1
+
+		-- Value
+		table.insert(graphics, {
+			Type = "Text",
+			Text = "Value",
+			Position = { xOffset, (fieldHeight + gapSize) * curRow},
+			Size = { fieldWidth, fieldHeight },
+			FontSize = 14,
+			HTextAlign = "Right"
+		})
+		layout["Value"] = {
+			PrettyName = "Value",
+			Style="TextBox",
+			Position = {xOffset + gapSize + fieldWidth, (fieldHeight + gapSize) * curRow},
+			Size = {fieldWidth, fieldHeight}
+		}
+		curRow = curRow + 1
+
+		-- Gauge
+		table.insert(graphics, {
+			Type = "Text",
+			Text = "Gauge",
+			Position = { xOffset, (fieldHeight + gapSize) * curRow},
+			Size = { fieldWidth, fieldHeight },
+			FontSize = 14,
+			HTextAlign = "Right"
+		})
+		layout["Gauge"] = {
+			PrettyName = "Gauge",
+			Style = "Button",
+			ButtonStyle = "Toggle",
+			Position = {xOffset + gapSize + fieldWidth, (fieldHeight + gapSize) * curRow},
+			Size = {fieldWidth, fieldHeight}
+		}
+		curRow = curRow + 1
+
+	end
+	return layout, graphics
+end
+
+--Start event based logic
+if Controls then
+
+	rapidjson = require("rapidjson")
+	ezsvg = require("EzSVG")
+
+	-- Sets the properties of the "Gauge" toggle button to draw a gauge on it
+	function drawSVG()
+		FUNCCALL("drawSVG()")
+		Controls.Gauge.Legend = rapidjson.encode({
+		  DrawChrome = false,
+		  IconData = Crypto.Base64Encode(draw())
+		})
+	end
+
+	-- Returns an SVG document string
+	function draw()
+		FUNCCALL("draw()")
+		-- Grab a copy of all of the control values, converting them as necessary
+		local docWidth = tonumber(Controls.GaugeWidth.String)
+		local docHeight = tonumber(Controls.GaugeHeight.String)
+		local isVertical = (docHeight > docWidth)
+		local segments = Controls.SegmentCount.Value
+		local segmentSpacing = Controls.SegmentSpacing.Value
+		local lowThresh = tonumber(Controls.ThresholdLow.String)
+		local highThresh = tonumber(Controls.ThresholdHigh.String)
+		local backgroundColor = Controls.ColorBackground.String
+		local backgroundOpacity = tostring(Controls.BackgroundOpacity.Position)
+		local offColor = Controls.ColorOff.String
+		local lowColor = Controls.ColorLow.String
+		local medColor = Controls.ColorMedium.String
+		local highColor = Controls.ColorHigh.String
+		local strokeColor = Controls.ColorStroke.String
+		local strokeWidth = Controls.StrokeWidth.Value
+		local cornerRadius = Controls.CornerRadius.Value
+		local maxValue = tonumber(Controls.Max.String)
+		local minValue = tonumber(Controls.Min.String)
+		local tmpValue = Controls.Value.String:gsub("dB", "") -- we do this in case it's coming from a gain knob
+		local curValue = tonumber(tmpValue)
+		local segmentHeight = 0
+		local segmentWidth = 0
+		local invertFill = Properties["Invert Fill"].Value
+		local thresholdLogic = Properties["Threshold Logic"].Value
+		local offOpacity = Controls.OffOpacity.Position
+		local segmentOpacity = 1
+
+		if isVertical then
+			segmentHeight = (docHeight / segments) - segmentSpacing
+			segmentWidth = docWidth
+		else
+			segmentWidth = (docWidth / segments) - segmentSpacing
+			segmentHeight = docHeight
+		end
+		
+		-- Create the SVG document
+		local doc = ezsvg.Document(docWidth, docHeight)
+	  
+		-- Draw the background
+		local bg = ezsvg.Rect(0, 0, docWidth, docHeight, 0, 0, {stroke_width = 0, fill=backgroundColor, fill_opacity=backgroundOpacity})
+		doc:add(bg)
+	  
+		-- Draw each segment
+		DBG(string.format("Drawing %d segments", segments), DebugLevelAll)
+		local seg = 0
+		for i=0,segments-1 do
+			if isVertical then
+				x = 0
+				y = docHeight - ((segmentHeight + segmentSpacing) * (i+1)) + (segmentSpacing/2)
+				seg = i
+			else
+				y = 0
+				x = docWidth - ((segmentWidth + segmentSpacing) * (i+1)) + (segmentSpacing/2)
+				seg = (segments-1) - i
+			end
+
+			if (isVertical and not invertFill) or (not isVertical and invertFill) then
+				-- noninverted
+				seg = i
+			else
+				-- we have to invert when horizontal to make it left-to-right
+				--inverted
+				seg = (segments-1) - i
+			end
+			
+
+			-- Calculate some thresholds to choose what color to draw for each segment
+			segmentMinimum = (seg) * ((maxValue - minValue) / segments) + minValue
+			segmentMaximum = (seg+1) * ((maxValue - minValue) / segments)+ minValue
+			segmentRange = segmentMaximum - segmentMinimum
+			segmentMid = segmentMinimum + segmentRange/2
+			
+			-- Figure out the correct threshold value to use to figure out the color
+			if thresholdLogic == "Minimum" then
+				segmentThresh = segmentMinimum
+			elseif thresholdLogic == "Midpoint" then
+				segmentThresh = segmentMid
+			else
+				segmentThresh = segmentMaximum
+			end
+
+			if curValue ~= nil and curValue >= segmentThresh then
+				-- Set the opacity to opaque
+				segmentOpacity = 1
+				-- The level is high enough to activate this segment
+				if segmentThresh > highThresh then
+					-- Current value is above the high threshold, use the "high" color
+					color = highColor
+				elseif segmentThresh > lowThresh then
+					-- Current value is above the low threshold, use the "medium" color
+					color = medColor
+				else
+					-- Current value is below the low threshold, use the "low" color
+					color = lowColor
+				end
+			else 
+				-- The level is below this segment's threshold
+				color = offColor
+				-- Set the off segment opacity
+				segmentOpacity = offOpacity
+			end
+
+			DBG(string.format("Drawing segment %d at position %f x %f with size %f x %f and color %s with background opacity %f", i, x, y, segmentWidth, segmentHeight, color, segmentOpacity), DebugLevelAll)
+
+			-- Draw the rectangle and add it to the document
+			rect = ezsvg.Rect(x, y, segmentWidth, segmentHeight, cornerRadius, cornerRadius, {fill=color, stroke=strokeColor, stroke_width=strokeWidth, fill_opacity=segmentOpacity})
+			doc:add(rect)
+		end
+
+		-- Build the SVG string and return it
+		svg = doc:toString("Design\\segmented-gauge.svg")
+		return doc:toString(svg)
+	end
+
+	-- Changing any value forces redrawing the gauge
+	Controls.Min.EventHandler = drawSVG
+	Controls.Max.EventHandler = drawSVG
+	Controls.SegmentCount.EventHandler = drawSVG
+	Controls.SegmentSpacing.EventHandler = drawSVG
+	Controls.ThresholdLow.EventHandler = drawSVG
+	Controls.ThresholdHigh.EventHandler = drawSVG
+	Controls.ColorBackground.EventHandler = drawSVG
+	Controls.ColorOff.EventHandler = drawSVG
+	Controls.ColorLow.EventHandler = drawSVG
+	Controls.ColorMedium.EventHandler = drawSVG
+	Controls.ColorHigh.EventHandler = drawSVG
+	Controls.ColorStroke.EventHandler = drawSVG
+	Controls.StrokeWidth.EventHandler = drawSVG
+	Controls.CornerRadius.EventHandler = drawSVG
+	Controls.GaugeWidth.EventHandler = drawSVG
+	Controls.GaugeHeight.EventHandler = drawSVG
+	Controls.BackgroundOpacity.EventHandler = drawSVG
+	Controls.Value.EventHandler = drawSVG
+	Controls.OffOpacity.EventHandler = drawSVG
+
+	-- Start out drawing whatever the values are
+	drawSVG()
+end
